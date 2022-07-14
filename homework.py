@@ -5,6 +5,7 @@ import requests
 import logging
 import sys
 
+from exceptions import BotSendMessageError
 from http import HTTPStatus
 from dotenv import load_dotenv
 
@@ -33,8 +34,10 @@ def send_message(bot, message):
     logging.info(f'Начата отправка сообщения: "{message}"')
     try:
         return bot.send_message(TELEGRAM_CHAT_ID, message)
-    except Exception:
-        logging.error('Возникла ошибка при отправке сообщения')
+    except telegram.error.BadRequest:
+        raise BotSendMessageError(
+            'Вознокла ошибка при отправке сообщения ботом.'
+        )
 
 
 def get_api_answer(current_timestamp):
@@ -50,10 +53,8 @@ def get_api_answer(current_timestamp):
                 f'Эндпоинт {ENDPOINT} недоступен. '
                 f'Код ответа API: {response.status_code}'
             )
-            logging.error(error)
             raise ConnectionError(error)
     except ConnectionError:
-        logging.error(error)
         raise ConnectionError(error)
 
     return response.json()
@@ -64,25 +65,17 @@ def check_response(response):
     logging.info('Начата проверка ответа от API.')
 
     if len(response) == 0:
-        error = 'Ответ от API содержит пустой словарь.'
-        logging.error(error)
-        raise IndexError(error)
+        raise IndexError('Ответ от API содержит пустой словарь.')
 
     if not isinstance(response, dict):
-        error = 'Ответ не является словарем.'
-        logging.error(error)
-        raise TypeError(error)
+        raise TypeError('Ответ не является словарем.')
 
     if 'homeworks' not in response or 'current_date' not in response:
-        error = 'Отсутствие ожидаемых ключей в ответе API.'
-        logging.error(error)
-        raise KeyError(error)
+        raise KeyError('Отсутствие ожидаемых ключей в ответе API.')
 
     homework_list = response['homeworks']
     if not isinstance(homework_list, list):
-        error = 'Ответ не является списком.'
-        logging.error(error)
-        raise TypeError(error)
+        raise TypeError('Ответ не является списком.')
 
     return homework_list
 
@@ -90,21 +83,18 @@ def check_response(response):
 def parse_status(homework):
     """Получение названия домашней работы и ее статуса."""
     logging.info('Начата проверка названия домашней работы.')
-    homework_name = homework['homework_name']
+    homework_name = homework.get('homework_name')
     if homework_name is None:
-        error = 'Не полученно имя домашней работы.'
-        raise Exception(error)
+        raise KeyError('Не полученно имя домашней работы.')
 
     logging.info('Начата проверка статуса домашней работы.')
     homework_status = homework.get('status')
     if homework_status not in HOMEWORK_VERDICTS:
-        error = 'Не получен статус домашней работы.'
-        raise KeyError(error)
+        raise KeyError('Не получен статус домашней работы.')
 
     verdict = HOMEWORK_VERDICTS[homework_status]
     if verdict is None:
-        error = 'Недокументированный статус домашней работы.'
-        raise Exception(error)
+        raise Exception('Недокументированный статус домашней работы.')
 
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
@@ -118,11 +108,12 @@ def main():
     """Основная логика работы бота."""
     logging.info('Начата проверка токенов')
     if not check_tokens():
-        logging.critical(
+        message = (
             'Отсутствует обязательная переменная окружения'
             '\nПрограмма принудительно остановленна.'
         )
-        raise ValueError('Token error')
+        logging.critical(message)
+        sys.exit(message)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
@@ -138,6 +129,7 @@ def main():
                 send_message(bot, message)
                 logging.info(f'Бот отправил сообщение: "{message}"')
         except Exception as error:
+            logging.error(error)
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
             logging.info(f'Бот отправил сообщение: "{message}"')
