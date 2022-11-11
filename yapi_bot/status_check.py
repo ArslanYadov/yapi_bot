@@ -7,17 +7,16 @@ import sys
 
 from exceptions import BotSendMessageError
 from http import HTTPStatus
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 
-load_dotenv()
-
+load_dotenv(find_dotenv())
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME = 10 * 60
+RETRY_TIME = int(10 * 60)
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -118,6 +117,7 @@ def main():
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
 
+    old_message = ''
     while True:
         try:
             response = get_api_answer(current_timestamp)
@@ -126,8 +126,10 @@ def main():
 
             if len(homework) > 0:
                 message = parse_status(homework[0])
-                send_message(bot, message)
-                logging.info(f'Бот отправил сообщение: "{message}"')
+                if message != old_message:
+                    send_message(bot, message)
+                    logging.info(f'Бот отправил сообщение: "{message}"')
+                old_message = message
         except Exception as error:
             logging.error(error)
             message = f'Сбой в работе программы: {error}'
